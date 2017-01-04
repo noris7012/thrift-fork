@@ -83,7 +83,7 @@ public class TMultiplexedProcessor implements TProcessor {
      * name was not found in the service map.  You called {@link #registerProcessor(String, TProcessor) registerProcessor}
      * during initialization, right? :)
      */
-    public boolean process(TProtocol iprot, TProtocol oprot) throws TException {
+    public boolean process(Object obj, TProtocol iprot, TProtocol oprot) throws TException {
         /*
             Use the actual underlying protocol (e.g. TBinaryProtocol) to read the
             message header.  This pulls the message "off the wire", which we'll
@@ -120,7 +120,7 @@ public class TMultiplexedProcessor implements TProcessor {
         );
 
         // Dispatch processing to the stored processor
-        return actualProcessor.process(new StoredMessageProtocol(iprot, standardMessage), oprot);
+        return actualProcessor.process(obj, new StoredMessageProtocol(iprot, standardMessage), oprot);
     }
 
     /**

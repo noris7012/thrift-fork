@@ -80,7 +80,7 @@ public class TServlet extends HttpServlet {
       TProtocol inProtocol = inProtocolFactory.getProtocol(inTransport);
       TProtocol outProtocol = outProtocolFactory.getProtocol(outTransport);
 
-      processor.process(inProtocol, outProtocol);
+      processor.process(null, inProtocol, outProtocol);
       out.flush();
     } catch (TException te) {
       throw new ServletException(te);

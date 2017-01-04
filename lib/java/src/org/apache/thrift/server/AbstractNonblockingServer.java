@@ -515,7 +515,7 @@ public abstract class AbstractNonblockingServer extends TServer {
         if (eventHandler_ != null) {
           eventHandler_.processContext(context_, inTrans_, outTrans_);
         }
-        processorFactory_.getProcessor(inTrans_).process(inProt_, outProt_);
+        processorFactory_.getProcessor(inTrans_).process(null, inProt_, outProt_);
         responseReady();
         return;
       } catch (TException te) {

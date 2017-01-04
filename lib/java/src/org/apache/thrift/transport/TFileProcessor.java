@@ -64,7 +64,7 @@ public class TFileProcessor {
 
     try {
       while (lastChunk >= curChunk) {
-        processor_.process(ip, op);
+        processor_.process(new Object(), ip, op);
         int newChunk = inputTransport_.getCurChunk();
         curChunk = newChunk;
       } 

@@ -131,7 +131,7 @@ public abstract class TExtensibleServlet extends HttpServlet {
       TProtocol inProtocol = inFactory.getProtocol(inTransport);
       TProtocol outProtocol = inFactory.getProtocol(outTransport);
 
-      processor.process(inProtocol, outProtocol);
+      processor.process(null, inProtocol, outProtocol);
       out.flush();
     } catch (TException te) {
       throw new ServletException(te);

@@ -283,7 +283,7 @@ public class TThreadPoolServer extends TServer {
               eventHandler.processContext(connectionContext, inputTransport, outputTransport);
             }
 
-            if(stopped_ || !processor.process(inputProtocol, outputProtocol)) {
+            if(stopped_ || !processor.process(null, inputProtocol, outputProtocol)) {
               break;
             }
         }

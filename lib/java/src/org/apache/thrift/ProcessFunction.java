@@ -19,7 +19,7 @@ public abstract class ProcessFunction<I, T extends TBase> {
     this.methodName = methodName;
   }
 
-  public final void process(int seqid, TProtocol iprot, TProtocol oprot, I iface) throws TException {
+  public final void process(int seqid, TProtocol iprot, TProtocol oprot, I iface, Object obj) throws TException {
     T args = getEmptyArgsInstance();
     try {
       args.read(iprot);
@@ -36,7 +36,7 @@ public abstract class ProcessFunction<I, T extends TBase> {
     TBase result = null;
 
     try {
-      result = getResult(iface, args);
+      result = getResult(obj, iface, args);
     } catch(TException tex) {
       LOGGER.error("Internal error processing " + getMethodName(), tex);
       if (!isOneway()) {
@@ -60,7 +60,7 @@ public abstract class ProcessFunction<I, T extends TBase> {
 
   protected abstract boolean isOneway();
 
-  public abstract TBase getResult(I iface, T args) throws TException;
+  public abstract TBase getResult(Object obj, I iface, T args) throws TException;
 
   public abstract T getEmptyArgsInstance();
 
