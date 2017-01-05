@@ -187,6 +187,7 @@ public:
   std::string isset_field_id(t_field* field);
 
   void generate_service_interface(t_service* tservice);
+  void generate_service_ap_interface(t_service* tservice);
   void generate_service_async_interface(t_service* tservice);
   void generate_service_helpers(t_service* tservice);
   void generate_service_client(t_service* tservice);
@@ -314,10 +315,12 @@ public:
   std::string base_type_name(t_base_type* tbase, bool in_container = false);
   std::string declare_field(t_field* tfield, bool init = false, bool comment = false);
   std::string function_signature(t_function* tfunction, std::string prefix = "");
+  std::string function_signature_ap(t_function* tfunction, std::string prefix = "");
   std::string function_signature_async(t_function* tfunction,
                                        bool use_base_method = false,
                                        std::string prefix = "");
   std::string argument_list(t_struct* tstruct, bool include_types = true);
+  std::string ap_argument_list(t_struct* tstruct, bool include_types = true);
   std::string async_function_call_arglist(t_function* tfunc,
                                           bool use_base_method = true,
                                           bool include_types = true);
@@ -2742,6 +2745,7 @@ void t_java_generator::generate_service(t_service* tservice) {
 
   // Generate the three main parts of the service
   generate_service_interface(tservice);
+  generate_service_ap_interface(tservice);
   generate_service_async_interface(tservice);
   generate_service_client(tservice);
   generate_service_async_client(tservice);
@@ -2778,6 +2782,28 @@ void t_java_generator::generate_service_interface(t_service* tservice) {
   }
   indent_down();
   f_service_ << indent() << "}" << endl << endl;
+}
+
+// AP interface Edit by joingue
+void t_java_generator::generate_service_ap_interface(t_service* tservice) {
+ string extends = "";
+ string extends_iface = "";
+ if (tservice->get_extends() != NULL) {
+   extends = type_name(tservice->get_extends());
+   extends_iface = " extends " + extends + ".APface";
+ }
+
+ generate_java_doc(f_service_, tservice);
+ f_service_ << indent() << "public interface APface" << extends_iface << " {" << endl << endl;
+ indent_up();
+ vector<t_function*> functions = tservice->get_functions();
+ vector<t_function*>::iterator f_iter;
+ for (f_iter = functions.begin(); f_iter != functions.end(); ++f_iter) {
+   generate_java_doc(f_service_, *f_iter);
+   indent(f_service_) << "public " << function_signature_ap(*f_iter) << ";" << endl << endl;
+ }
+ indent_down();
+ f_service_ << indent() << "}" << endl << endl;
 }
 
 void t_java_generator::generate_service_async_interface(t_service* tservice) {
@@ -3170,7 +3196,8 @@ void t_java_generator::generate_service_server(t_service* tservice) {
   }
 
   // Generate the header portion
-  indent(f_service_) << "public static class Processor<I extends Iface> extends "
+  // Edit by joingue
+  indent(f_service_) << "public static class Processor<I extends APface> extends "
                      << extends_processor << " implements org.apache.thrift.TProcessor {" << endl;
   indent_up();
 
@@ -3190,7 +3217,7 @@ void t_java_generator::generate_service_server(t_service* tservice) {
   indent(f_service_) << "  super(iface, getProcessMap(processMap));" << endl;
   indent(f_service_) << "}" << endl << endl;
 
-  indent(f_service_) << "private static <I extends Iface> java.util.Map<java.lang.String,  "
+  indent(f_service_) << "private static <I extends APface> java.util.Map<java.lang.String,  "
                         "org.apache.thrift.ProcessFunction<I, ? extends org.apache.thrift.TBase>> "
                         "getProcessMap(java.util.Map<java.lang.String, org.apache.thrift.ProcessFunction<I, ? extends "
                         " org.apache.thrift.TBase>> processMap) {" << endl;
@@ -3505,6 +3532,7 @@ void t_java_generator::generate_process_async_function(t_service* tservice, t_fu
  *
  * @param tfunction The function to write a dispatcher for
  */
+ // Edit by joingue
 void t_java_generator::generate_process_function(t_service* tservice, t_function* tfunction) {
   string argsname = tfunction->get_name() + "_args";
   string resultname = tfunction->get_name() + "_result";
@@ -3515,7 +3543,7 @@ void t_java_generator::generate_process_function(t_service* tservice, t_function
   (void)tservice;
   // Open class
   indent(f_service_) << "public static class " << tfunction->get_name()
-                     << "<I extends Iface> extends org.apache.thrift.ProcessFunction<I, "
+                     << "<I extends APface> extends org.apache.thrift.ProcessFunction<I, "
                      << argsname << "> {" << endl;
   indent_up();
 
@@ -3531,7 +3559,7 @@ void t_java_generator::generate_process_function(t_service* tservice, t_function
   indent(f_service_) << "  return " << ((tfunction->is_oneway()) ? "true" : "false") << ";" << endl;
   indent(f_service_) << "}" << endl << endl;
 
-  indent(f_service_) << "public " << resultname << " getResult(I iface, " << argsname
+  indent(f_service_) << "public " << resultname << " getResult(Object obj, I iface, " << argsname
                      << " args) throws org.apache.thrift.TException {" << endl;
   indent_up();
   if (!tfunction->is_oneway()) {
@@ -3557,8 +3585,8 @@ void t_java_generator::generate_process_function(t_service* tservice, t_function
   if (!tfunction->is_oneway() && !tfunction->get_returntype()->is_void()) {
     f_service_ << "result.success = ";
   }
-  f_service_ << "iface." << get_rpc_method_name(tfunction->get_name()) << "(";
-  bool first = true;
+  f_service_ << "iface." << get_rpc_method_name(tfunction->get_name()) << "(" << "obj";
+  bool first = false;
   for (f_iter = fields.begin(); f_iter != fields.end(); ++f_iter) {
     if (first) {
       first = false;
@@ -4259,6 +4287,22 @@ string t_java_generator::function_signature(t_function* tfunction, string prefix
   return result;
 }
 
+// Edit by joingue
+string t_java_generator::function_signature_ap(t_function* tfunction, string prefix) {
+ t_type* ttype = tfunction->get_returntype();
+ std::string fn_name = get_rpc_method_name(tfunction->get_name());
+ std::string result = type_name(ttype) + " " + prefix + fn_name + "("
+                      + ap_argument_list(tfunction->get_arglist()) + ") throws ";
+ t_struct* xs = tfunction->get_xceptions();
+ const std::vector<t_field*>& xceptions = xs->get_members();
+ vector<t_field*>::const_iterator x_iter;
+ for (x_iter = xceptions.begin(); x_iter != xceptions.end(); ++x_iter) {
+   result += type_name((*x_iter)->get_type(), false, false) + ", ";
+ }
+ result += "org.apache.thrift.TException";
+ return result;
+}
+
 /**
  * Renders a function signature of the form 'void name(args, resultHandler)'
  *
@@ -4321,6 +4365,28 @@ string t_java_generator::argument_list(t_struct* tstruct, bool include_types) {
     result += (*f_iter)->get_name();
   }
   return result;
+}
+
+// Edit by joingue
+string t_java_generator::ap_argument_list(t_struct* tstruct, bool include_types) {
+ string result = "";
+
+ const vector<t_field*>& fields = tstruct->get_members();
+ vector<t_field*>::const_iterator f_iter;
+ bool first = false;
+ result += "Object obj";
+ for (f_iter = fields.begin(); f_iter != fields.end(); ++f_iter) {
+   if (first) {
+     first = false;
+   } else {
+     result += ", ";
+   }
+   if (include_types) {
+     result += type_name((*f_iter)->get_type()) + " ";
+   }
+   result += (*f_iter)->get_name();
+ }
+ return result;
 }
 
 string t_java_generator::async_argument_list(t_function* tfunct,
