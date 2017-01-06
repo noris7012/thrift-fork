@@ -145,6 +145,7 @@ public:
   void generate_service_interface(t_service* tservice);
   void generate_separate_service_interfaces(t_service* tservice);
   void generate_sync_service_interface(t_service* tservice);
+  void generate_ap_service_interface(t_service* tservice);
   void generate_async_service_interface(t_service* tservice);
   void generate_combined_service_interface(t_service* tservice);
   void generate_silverlight_async_methods(t_service* tservice);
@@ -204,7 +205,9 @@ public:
   std::string function_signature_async_end(t_function* tfunction, std::string prefix = "");
   std::string function_signature_async(t_function* tfunction, std::string prefix = "");
   std::string function_signature(t_function* tfunction, std::string prefix = "");
+  std::string function_signature_ap(t_function* tfunction, std::string prefix = "");
   std::string argument_list(t_struct* tstruct);
+  std::string argument_list_ap(std::string name, t_struct* tstruct, bool oneway);
   std::string type_to_enum(t_type* ttype);
   std::string prop_name(t_field* tfield, bool suppress_mapping = false);
   std::string get_enum_class_name(t_type* type);
@@ -1437,6 +1440,7 @@ void t_csharp_generator::generate_service_interface(t_service* tservice) {
 
 void t_csharp_generator::generate_separate_service_interfaces(t_service* tservice) {
   generate_sync_service_interface(tservice);
+  generate_ap_service_interface(tservice);
 
   if (async_) {
     generate_async_service_interface(tservice);
@@ -1479,6 +1483,45 @@ void t_csharp_generator::generate_sync_service_interface(t_service* tservice) {
     }
 
     indent(f_service_) << function_signature(*f_iter) << ";" << endl;
+  }
+  indent_down();
+  f_service_ << indent() << "}" << endl << endl;
+}
+
+void t_csharp_generator::generate_ap_service_interface(t_service* tservice) {
+  string extends = "";
+  string extends_iface = "";
+  if (tservice->get_extends() != NULL) {
+    extends = type_name(tservice->get_extends());
+    extends_iface = " : " + extends + ".ISync";
+  }
+
+  generate_csharp_doc(f_service_, tservice);
+
+  if (wcf_) {
+    indent(f_service_) << "[ServiceContract(Namespace=\"" << wcf_namespace_ << "\")]" << endl;
+  }
+  indent(f_service_) << "public interface APface" << extends_iface << " {" << endl;
+
+  indent_up();
+  vector<t_function*> functions = tservice->get_functions();
+  vector<t_function*>::iterator f_iter;
+  for (f_iter = functions.begin(); f_iter != functions.end(); ++f_iter) {
+    generate_csharp_doc(f_service_, *f_iter);
+
+    // if we're using WCF, add the corresponding attributes
+    if (wcf_) {
+      indent(f_service_) << "[OperationContract]" << endl;
+
+      const std::vector<t_field*>& xceptions = (*f_iter)->get_xceptions()->get_members();
+      vector<t_field*>::const_iterator x_iter;
+      for (x_iter = xceptions.begin(); x_iter != xceptions.end(); ++x_iter) {
+        indent(f_service_) << "[FaultContract(typeof("
+          + type_name((*x_iter)->get_type(), false, false) + "Fault))]" << endl;
+      }
+    }
+
+    indent(f_service_) << function_signature_ap(*f_iter) << ";" << endl;
   }
   indent_down();
   f_service_ << indent() << "}" << endl << endl;
@@ -1943,7 +1986,7 @@ void t_csharp_generator::generate_service_server_sync(t_service* tservice) {
   indent(f_service_) << "public class Processor : " << extends_processor << "TProcessor {" << endl;
   indent_up();
 
-  indent(f_service_) << "public Processor(ISync iface)";
+  indent(f_service_) << "public Processor(APface iface)";
 
   if (!extends.empty()) {
     f_service_ << " : base(iface)";
@@ -1967,7 +2010,7 @@ void t_csharp_generator::generate_service_server_sync(t_service* tservice) {
       << endl;
   }
 
-  f_service_ << indent() << "private ISync iface_;" << endl;
+  f_service_ << indent() << "private APface iface_;" << endl;
 
   if (extends.empty()) {
     f_service_ << indent() << "protected Dictionary<string, ProcessFunction> processMap_ = new "
@@ -2136,114 +2179,206 @@ void t_csharp_generator::generate_function_helpers(t_function* tfunction) {
 }
 
 void t_csharp_generator::generate_process_function(t_service* tservice, t_function* tfunction) {
-  (void)tservice;
-  indent(f_service_) << "public void " << tfunction->get_name()
-                     << "_Process(int seqid, TProtocol iprot, TProtocol oprot)" << endl;
-  scope_up(f_service_);
+  {
+    (void)tservice;
+    indent(f_service_) << "public void " << tfunction->get_name()
+                       << "_Process(int seqid, TProtocol iprot, TProtocol oprot)" << endl;
+    scope_up(f_service_);
 
-  string argsname = tfunction->get_name() + "_args";
-  string resultname = tfunction->get_name() + "_result";
+    string argsname = tfunction->get_name() + "_args";
+    string resultname = tfunction->get_name() + "_result";
 
-  f_service_ << indent() << argsname << " args = new " << argsname << "();" << endl
-             << indent() << "args.Read(iprot);" << endl
-             << indent() << "iprot.ReadMessageEnd();" << endl;
+    f_service_ << indent() << argsname << " args = new " << argsname << "();" << endl
+               << indent() << "args.Read(iprot);" << endl
+               << indent() << "iprot.ReadMessageEnd();" << endl;
 
-  t_struct* xs = tfunction->get_xceptions();
-  const std::vector<t_field*>& xceptions = xs->get_members();
-  vector<t_field*>::const_iterator x_iter;
+    t_struct* xs = tfunction->get_xceptions();
+    const std::vector<t_field*>& xceptions = xs->get_members();
+    vector<t_field*>::const_iterator x_iter;
 
-  if (!tfunction->is_oneway()) {
-    f_service_ << indent() << resultname << " result = new " << resultname << "();" << endl;
-  }
+    if (!tfunction->is_oneway()) {
+      f_service_ << indent() << resultname << " result = new " << resultname << "();" << endl;
+    }
 
-  f_service_ << indent() << "try" << endl
-             << indent() << "{" << endl;
-  indent_up();
-
-  if (xceptions.size() > 0) {
     f_service_ << indent() << "try" << endl
                << indent() << "{" << endl;
     indent_up();
-  }
 
-  t_struct* arg_struct = tfunction->get_arglist();
-  const std::vector<t_field*>& fields = arg_struct->get_members();
-  vector<t_field*>::const_iterator f_iter;
-
-  f_service_ << indent();
-  if (!tfunction->is_oneway() && !tfunction->get_returntype()->is_void()) {
-    f_service_ << "result.Success = ";
-  }
-  f_service_ << "iface_." << normalize_name(tfunction->get_name()) << "(";
-  bool first = true;
-  prepare_member_name_mapping(arg_struct);
-  for (f_iter = fields.begin(); f_iter != fields.end(); ++f_iter) {
-    if (first) {
-      first = false;
-    } else {
-      f_service_ << ", ";
-    }
-    f_service_ << "args." << prop_name(*f_iter);
-    if (nullable_ && !type_can_be_null((*f_iter)->get_type())) {
-      f_service_ << ".Value";
-    }
-  }
-  cleanup_member_name_mapping(arg_struct);
-  f_service_ << ");" << endl;
-
-  prepare_member_name_mapping(xs, xs->get_members(), resultname);
-  if (xceptions.size() > 0) {
-    indent_down();
-    f_service_ << indent() << "}" << endl;
-    for (x_iter = xceptions.begin(); x_iter != xceptions.end(); ++x_iter) {
-      f_service_ << indent() << "catch (" << type_name((*x_iter)->get_type(), false, false) << " "
-                 << (*x_iter)->get_name() << ")" << endl
+    if (xceptions.size() > 0) {
+      f_service_ << indent() << "try" << endl
                  << indent() << "{" << endl;
-      if (!tfunction->is_oneway()) {
-        indent_up();
-        f_service_ << indent() << "result." << prop_name(*x_iter) << " = " << (*x_iter)->get_name()
-                   << ";" << endl;
-        indent_down();
-      }
-      f_service_ << indent() << "}" << endl;
+      indent_up();
     }
+
+    t_struct* arg_struct = tfunction->get_arglist();
+    const std::vector<t_field*>& fields = arg_struct->get_members();
+    vector<t_field*>::const_iterator f_iter;
+
+    f_service_ << indent();
+    f_service_ << "iface_." << normalize_name(tfunction->get_name()) << "(";
+    bool first = true;
+    prepare_member_name_mapping(arg_struct);
+    for (f_iter = fields.begin(); f_iter != fields.end(); ++f_iter) {
+      if (first) {
+        first = false;
+      } else {
+        f_service_ << ", ";
+      }
+      f_service_ << "args." << prop_name(*f_iter);
+      if (nullable_ && !type_can_be_null((*f_iter)->get_type())) {
+        f_service_ << ".Value";
+      }
+    }
+
+    if (!tfunction->is_oneway()) {
+      if (!first) {
+        f_service_ << ", ";
+      }
+
+      f_service_ << "result, " << tfunction->get_name()
+                 << "_Process2(seqid, iprot, oprot, result)";
+    }
+
+    cleanup_member_name_mapping(arg_struct);
+    f_service_ << ");" << endl;
+
+    prepare_member_name_mapping(xs, xs->get_members(), resultname);
+    if (xceptions.size() > 0) {
+      indent_down();
+      f_service_ << indent() << "}" << endl;
+      for (x_iter = xceptions.begin(); x_iter != xceptions.end(); ++x_iter) {
+        f_service_ << indent() << "catch (" << type_name((*x_iter)->get_type(), false, false) << " "
+                   << (*x_iter)->get_name() << ")" << endl
+                   << indent() << "{" << endl;
+        if (!tfunction->is_oneway()) {
+          indent_up();
+          f_service_ << indent() << "result." << prop_name(*x_iter) << " = " << (*x_iter)->get_name()
+                     << ";" << endl;
+          indent_down();
+        }
+        f_service_ << indent() << "}" << endl;
+      }
+    }
+    if (!tfunction->is_oneway()) {
+      f_service_ << indent() << "oprot.WriteMessageBegin(new TMessage(\"" << tfunction->get_name()
+                 << "\", TMessageType.Reply, seqid)); " << endl;
+      f_service_ << indent() << "result.Write(oprot);" << endl;
+    }
+    indent_down();
+
+    cleanup_member_name_mapping(xs);
+
+    f_service_ << indent() << "}" << endl
+               << indent() << "catch (TTransportException)" << endl
+               << indent() << "{" << endl
+               << indent() << "  throw;" << endl
+               << indent() << "}" << endl
+               << indent() << "catch (Exception ex)" << endl
+               << indent() << "{" << endl
+               << indent() << "  Console.Error.WriteLine(\"Error occurred in processor:\");" << endl
+               << indent() << "  Console.Error.WriteLine(ex.ToString());" << endl;
+
+    if (tfunction->is_oneway()) {
+      f_service_ << indent() << "}" << endl;
+    } else {
+      f_service_ << indent() << "  TApplicationException x = new TApplicationException" << indent()
+                 << "(TApplicationException.ExceptionType.InternalError,\" Internal error.\");"
+                 << endl
+                 << indent() << "  oprot.WriteMessageBegin(new TMessage(\"" << tfunction->get_name()
+                 << "\", TMessageType.Exception, seqid));" << endl
+                 << indent() << "  x.Write(oprot);" << endl
+                 << indent() << "}" << endl;
+      f_service_ << indent() << "oprot.WriteMessageEnd();" << endl
+                 << indent() << "oprot.Transport.Flush();" << endl;
+    }
+    scope_down(f_service_);
+
+    f_service_ << endl;
   }
+
   if (!tfunction->is_oneway()) {
-    f_service_ << indent() << "oprot.WriteMessageBegin(new TMessage(\"" << tfunction->get_name()
-               << "\", TMessageType.Reply, seqid)); " << endl;
-    f_service_ << indent() << "result.Write(oprot);" << endl;
+    //
+    indent(f_service_) << "public IEnumerator " << tfunction->get_name()
+                       << "_Process2(int seqid, TProtocol iprot, TProtocol oprot, "
+                       << tfunction->get_name() << "_result result)" << endl;
+    scope_up(f_service_);
+
+    string argsname = tfunction->get_name() + "_args";
+    string resultname = tfunction->get_name() + "_result";
+
+    t_struct* xs = tfunction->get_xceptions();
+    const std::vector<t_field*>& xceptions = xs->get_members();
+    vector<t_field*>::const_iterator x_iter;
+
+    f_service_ << indent() << "try" << endl
+               << indent() << "{" << endl;
+    indent_up();
+
+    if (xceptions.size() > 0) {
+      f_service_ << indent() << "try" << endl
+                 << indent() << "{" << endl;
+      indent_up();
+    }
+
+    t_struct* arg_struct = tfunction->get_arglist();
+    const std::vector<t_field*>& fields = arg_struct->get_members();
+    vector<t_field*>::const_iterator f_iter;
+
+    prepare_member_name_mapping(xs, xs->get_members(), resultname);
+    if (xceptions.size() > 0) {
+      indent_down();
+      f_service_ << indent() << "}" << endl;
+      for (x_iter = xceptions.begin(); x_iter != xceptions.end(); ++x_iter) {
+        f_service_ << indent() << "catch (" << type_name((*x_iter)->get_type(), false, false) << " "
+                   << (*x_iter)->get_name() << ")" << endl
+                   << indent() << "{" << endl;
+        if (!tfunction->is_oneway()) {
+          indent_up();
+          f_service_ << indent() << "result." << prop_name(*x_iter) << " = " << (*x_iter)->get_name()
+                     << ";" << endl;
+          indent_down();
+        }
+        f_service_ << indent() << "}" << endl;
+      }
+    }
+    if (!tfunction->is_oneway()) {
+      f_service_ << indent() << "oprot.WriteMessageBegin(new TMessage(\"" << tfunction->get_name()
+                 << "\", TMessageType.Reply, seqid)); " << endl;
+      f_service_ << indent() << "result.Write(oprot);" << endl;
+    }
+    indent_down();
+
+    cleanup_member_name_mapping(xs);
+
+    f_service_ << indent() << "}" << endl
+               << indent() << "catch (TTransportException)" << endl
+               << indent() << "{" << endl
+               << indent() << "  throw;" << endl
+               << indent() << "}" << endl
+               << indent() << "catch (Exception ex)" << endl
+               << indent() << "{" << endl
+               << indent() << "  Console.Error.WriteLine(\"Error occurred in processor:\");" << endl
+               << indent() << "  Console.Error.WriteLine(ex.ToString());" << endl;
+
+    if (tfunction->is_oneway()) {
+      f_service_ << indent() << "}" << endl;
+    } else {
+      f_service_ << indent() << "  TApplicationException x = new TApplicationException" << indent()
+                 << "(TApplicationException.ExceptionType.InternalError,\" Internal error.\");"
+                 << endl
+                 << indent() << "  oprot.WriteMessageBegin(new TMessage(\"" << tfunction->get_name()
+                 << "\", TMessageType.Exception, seqid));" << endl
+                 << indent() << "  x.Write(oprot);" << endl
+                 << indent() << "}" << endl;
+      f_service_ << indent() << "oprot.WriteMessageEnd();" << endl
+                 << indent() << "oprot.Transport.Flush();" << endl;
+      f_service_ << indent() << "return null;" << endl;
+    }
+
+    scope_down(f_service_);
+
+    f_service_ << endl;
   }
-  indent_down();
-
-  cleanup_member_name_mapping(xs);
-
-  f_service_ << indent() << "}" << endl
-             << indent() << "catch (TTransportException)" << endl
-             << indent() << "{" << endl
-             << indent() << "  throw;" << endl
-             << indent() << "}" << endl
-             << indent() << "catch (Exception ex)" << endl
-             << indent() << "{" << endl
-             << indent() << "  Console.Error.WriteLine(\"Error occurred in processor:\");" << endl
-             << indent() << "  Console.Error.WriteLine(ex.ToString());" << endl;
-
-  if (tfunction->is_oneway()) {
-    f_service_ << indent() << "}" << endl;
-  } else {
-    f_service_ << indent() << "  TApplicationException x = new TApplicationException" << indent()
-               << "(TApplicationException.ExceptionType.InternalError,\" Internal error.\");"
-               << endl
-               << indent() << "  oprot.WriteMessageBegin(new TMessage(\"" << tfunction->get_name()
-               << "\", TMessageType.Exception, seqid));" << endl
-               << indent() << "  x.Write(oprot);" << endl
-               << indent() << "}" << endl;
-    f_service_ << indent() << "oprot.WriteMessageEnd();" << endl
-               << indent() << "oprot.Transport.Flush();" << endl;
-  }
-
-  scope_down(f_service_);
-
-  f_service_ << endl;
 }
 
 void t_csharp_generator::generate_process_function_async(t_service* tservice, t_function* tfunction) {
@@ -3058,6 +3193,17 @@ string t_csharp_generator::function_signature(t_function* tfunction, string pref
          + argument_list(tfunction->get_arglist()) + ")";
 }
 
+string t_csharp_generator::function_signature_ap(t_function* tfunction, string prefix) {
+  t_type* ttype = tfunction->get_returntype();
+  if (!tfunction->is_oneway()) {
+    return "void " + normalize_name(prefix + tfunction->get_name()) + "("
+           + argument_list_ap(tfunction->get_name(), tfunction->get_arglist(), tfunction->is_oneway()) + ")";
+  } else {
+    return type_name(ttype) + " " + normalize_name(prefix + tfunction->get_name()) + "("
+           + argument_list_ap(tfunction->get_name(), tfunction->get_arglist(), tfunction->is_oneway()) + ")";
+  }
+}
+
 string t_csharp_generator::function_signature_async_begin(t_function* tfunction, string prefix) {
   string comma = (tfunction->get_arglist()->get_members().size() > 0 ? ", " : "");
   return "IAsyncResult " + normalize_name(prefix + tfunction->get_name())
@@ -3093,6 +3239,31 @@ string t_csharp_generator::argument_list(t_struct* tstruct) {
     }
     result += type_name((*f_iter)->get_type()) + " " + normalize_name((*f_iter)->get_name());
   }
+  return result;
+}
+
+string t_csharp_generator::argument_list_ap(std::string name, t_struct* tstruct, bool oneway) {
+  string result = "";
+  const vector<t_field*>& fields = tstruct->get_members();
+  vector<t_field*>::const_iterator f_iter;
+  bool first = true;
+  for (f_iter = fields.begin(); f_iter != fields.end(); ++f_iter) {
+    if (first) {
+      first = false;
+    } else {
+      result += ", ";
+    }
+    result += type_name((*f_iter)->get_type()) + " " + normalize_name((*f_iter)->get_name());
+  }
+
+  if (!oneway) {
+    if (first) {
+      result += name + "_result result, IEnumerator enumerator";
+    } else {
+      result += ", " + name + "_result result, IEnumerator enumerator";
+    }
+  }
+
   return result;
 }
 
