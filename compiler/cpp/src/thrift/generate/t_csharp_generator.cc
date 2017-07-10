@@ -2214,6 +2214,12 @@ void t_csharp_generator::generate_process_function(t_service* tservice, t_functi
     const std::vector<t_field*>& fields = arg_struct->get_members();
     vector<t_field*>::const_iterator f_iter;
 
+    if (!tfunction->is_oneway()) {
+      f_service_ << indent() << "IEnumerator enumerator = " << normalize_name(tfunction->get_name())
+                 << "_Process2(seqid, iprot, oprot, result);" << endl;
+      f_service_ << indent() << "enumerator.MoveNext();" << endl;
+    }
+
     f_service_ << indent();
     f_service_ << "iface_." << normalize_name(tfunction->get_name()) << "(";
     bool first = true;
@@ -2235,8 +2241,7 @@ void t_csharp_generator::generate_process_function(t_service* tservice, t_functi
         f_service_ << ", ";
       }
 
-      f_service_ << "result, " << tfunction->get_name()
-                 << "_Process2(seqid, iprot, oprot, result)";
+      f_service_ << "result, enumerator";
     }
 
     cleanup_member_name_mapping(arg_struct);
@@ -2259,11 +2264,7 @@ void t_csharp_generator::generate_process_function(t_service* tservice, t_functi
         f_service_ << indent() << "}" << endl;
       }
     }
-    if (!tfunction->is_oneway()) {
-      f_service_ << indent() << "oprot.WriteMessageBegin(new TMessage(\"" << tfunction->get_name()
-                 << "\", TMessageType.Reply, seqid)); " << endl;
-      f_service_ << indent() << "result.Write(oprot);" << endl;
-    }
+
     indent_down();
 
     cleanup_member_name_mapping(xs);
@@ -2287,9 +2288,9 @@ void t_csharp_generator::generate_process_function(t_service* tservice, t_functi
                  << indent() << "  oprot.WriteMessageBegin(new TMessage(\"" << tfunction->get_name()
                  << "\", TMessageType.Exception, seqid));" << endl
                  << indent() << "  x.Write(oprot);" << endl
+                 << indent() << "  oprot.WriteMessageEnd();" << endl
+                 << indent() << "  oprot.Transport.Flush();" << endl
                  << indent() << "}" << endl;
-      f_service_ << indent() << "oprot.WriteMessageEnd();" << endl
-                 << indent() << "oprot.Transport.Flush();" << endl;
     }
     scope_down(f_service_);
 
@@ -2309,6 +2310,8 @@ void t_csharp_generator::generate_process_function(t_service* tservice, t_functi
     t_struct* xs = tfunction->get_xceptions();
     const std::vector<t_field*>& xceptions = xs->get_members();
     vector<t_field*>::const_iterator x_iter;
+
+    f_service_ << indent() << "yield return null;" << endl;
 
     f_service_ << indent() << "try" << endl
                << indent() << "{" << endl;
@@ -2372,7 +2375,6 @@ void t_csharp_generator::generate_process_function(t_service* tservice, t_functi
                  << indent() << "}" << endl;
       f_service_ << indent() << "oprot.WriteMessageEnd();" << endl
                  << indent() << "oprot.Transport.Flush();" << endl;
-      f_service_ << indent() << "return null;" << endl;
     }
 
     scope_down(f_service_);
